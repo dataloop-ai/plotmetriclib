@@ -20,7 +20,7 @@ class BoxStuff:
     def __init__(self):
         self.by_model_name = {}
 
-    def add_image_dets(self, filepathname, model_name):
+    def _add_image_dets(self, filepathname, model_name):
 
         bb_type = BBType.Detected
 
@@ -62,7 +62,7 @@ class BoxStuff:
                 if '.txt' not in ext.lower():
                     continue
                 detfilename = os.path.join(path, name)
-                self.add_image_dets(detfilename, model_name)
+                self._add_image_dets(detfilename, model_name)
 
     def add_coco(self, coco):
         model_name = 'gt'
@@ -93,7 +93,7 @@ class BoxStuff:
 
             self.by_model_name[model_name].addBoundingBox(bb)
 
-    def add_dljson(self, filepathname):
+    def _add_dljson(self, filepathname):
         model_name = 'gt'
         bb_type = BBType.GroundTruth
         image_name = filepathname.split('/')[-1].split('.')[0]
@@ -131,7 +131,7 @@ class BoxStuff:
                 if '.json' not in ext.lower():
                     continue
                 gt_filename = os.path.join(path, name)
-                self.add_dljson(gt_filename)
+                self._add_dljson(gt_filename)
 
 if __name__ == '__main__':
     predictions_folder = '/Users/noam/data/rodent_data/predictions'
@@ -145,5 +145,5 @@ if __name__ == '__main__':
     # boxstuff.add_coco(coco)
     boxstuff.add_jsons_path(json_file)
     boxstuff.add_path_detections(predictions_folder)
-    pass
+    
 
