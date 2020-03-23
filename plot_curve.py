@@ -7,10 +7,10 @@ import glob
 import os
 import threading
 import dtlpy as dlp
-from plotter_lib.BoundingBox import BoundingBox
-from plotter_lib.BoundingBoxes import BoundingBoxes
-from plotter_lib.Evaluator import Evaluator
-from plotter_lib.utils import BBFormat, CoordinatesType, BBType, MethodAveragePrecision
+from .plotter_lib.BoundingBox import BoundingBox
+from .plotter_lib.BoundingBoxes import BoundingBoxes
+from .plotter_lib.Evaluator import Evaluator
+from .plotter_lib.utils import BBFormat, CoordinatesType, BBType, MethodAveragePrecision
 from pycocotools.coco import COCO
 import torch
 
