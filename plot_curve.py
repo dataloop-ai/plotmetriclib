@@ -15,7 +15,7 @@ from pycocotools.coco import COCO
 import torch
 
 
-class BoxStuff:
+class precision_recall_plotter:
 
     def __init__(self):
         self.by_model_name = {}
@@ -27,7 +27,6 @@ class BoxStuff:
         with open(filepathname, 'r') as f:
             x = f.readlines()
         detections_list = [line.strip('\n').strip(' ').split(' ') for line in x]
-
 
         filename = filepathname.strip('/').split('/')[-1]
         image_name = filename.split('.')[0]
@@ -53,10 +52,10 @@ class BoxStuff:
     def add_path_detections(self, predictions_folder):
 
         for path, subdirs, files in os.walk(predictions_folder):
-            if 'model' in path.split('/')[-1]:
+            if 'checkpoint' in path.split('/')[-1]:
                 model_name = path.split('/')[-1]
             else:
-                model_name = 'only_model'
+                model_name = 'only_checkpoint'
             for name in files:
                 filename, ext = os.path.splitext(name)
                 if '.txt' not in ext.lower():
@@ -64,7 +63,7 @@ class BoxStuff:
                 detfilename = os.path.join(path, name)
                 self._add_image_dets(detfilename, model_name)
 
-    def add_coco(self, coco):
+    def add_coco_annotations(self, coco):
         model_name = 'gt'
         bb_type = BBType.GroundTruth
 
@@ -124,7 +123,7 @@ class BoxStuff:
 
             self.by_model_name[model_name].addBoundingBox(bb)
 
-    def add_jsons_path(self, json_file):
+    def add_dataloop_local_annotations(self, json_file):
         for path, subdirs, files in os.walk(json_file):
             for name in files:
                 filename, ext = os.path.splitext(name)
@@ -132,6 +131,70 @@ class BoxStuff:
                     continue
                 gt_filename = os.path.join(path, name)
                 self._add_dljson(gt_filename)
+
+    def _collect_annotations(self, w_item):
+        try:
+            # add all box annotations to calculation
+            # print(w_item.filename)
+            annotations = w_item.annotations.list()
+            thisItem = BoundingBoxes()
+            for annotation in annotations:
+                if annotation.type != 'box':
+                    continue
+                try:
+                    model_name = annotation.metadata['user']['model']['name']
+                    bb_type = BBType.Detected
+                    class_conf = annotation.metadata['user']['model']['confidence']
+                except KeyError:
+                    bb_type = BBType.GroundTruth
+                    model_name = 'gt'
+                    class_conf = None
+                except:
+                    raise
+
+                bb = BoundingBox(imageName=w_item.filename,
+                                 classId=annotation.label.lower(),
+                                 x=annotation.coordinates[0]['x'],
+                                 y=annotation.coordinates[0]['y'],
+                                 w=annotation.coordinates[1]['x'],
+                                 h=annotation.coordinates[1]['y'],
+                                 typeCoordinates=CoordinatesType.Absolute,
+                                 classConfidence=class_conf,
+                                 imgSize=(w_item.width, w_item.height),
+                                 bbType=bb_type,
+                                 format=BBFormat.XYX2Y2,
+                                 model_name=model_name)
+                thisItem.addBoundingBox(bb)
+                lock = threading.Lock()
+                with lock:
+                    if model_name not in self.by_model_name:
+                        self.by_model_name[model_name] = BoundingBoxes()
+
+                    self.by_model_name[model_name].addBoundingBox(bb)
+        except:
+            print(traceback.format_exc())
+
+
+    def add_dataloop_remote_annotations(self, project_name, dataset_name, filter_value):
+        dlp.setenv('prod')
+        project = dlp.projects.get(project_name)
+        dataset = project.datasets.get(dataset_name)
+
+        filters = dlp.Filters()
+        filters.add(field='filename', values=filter_value)
+        pages = dataset.items.list(filters=filters)
+
+        i_item = 0
+        pool = ThreadPool(processes=32)
+        for page in pages:
+            for item in page:
+                if item.filename.startswith('/.dataloop'):
+                    continue
+                pool.apply_async(self._collect_annotations, kwds={'w_item': item})
+                i_item += 1
+        pool.close()
+        pool.join()
+
 
     def plot_metrics(self):
         precision_recall_fig, precision_recall = plt.subplots()
@@ -153,7 +216,7 @@ class BoxStuff:
             to_show._boundingBoxes += bbs._boundingBoxes
             to_show._boundingBoxes += self.by_model_name['gt']._boundingBoxes
             res = evaluator.GetPascalVOCMetrics(boundingboxes=to_show,
-                                                IOUThreshold=0.1,
+                                                IOUThreshold=0.5,
                                                 method=MethodAveragePrecision.EveryPointInterpolation)
             results = res[class_id]
             # plot precision recall
@@ -222,17 +285,20 @@ class BoxStuff:
         precision_recall_fig.canvas.mpl_connect('pick_event', onpick)
         plt.show()
 
+
 if __name__ == '__main__':
-    predictions_folder = '/Users/noam/data/rodent_data/predictions'
+    predictions_dir_path = '/Users/noam/data/rodent_data/predictions'
 
-    gt_file = glob.glob(os.path.join(predictions_folder, '*groundtruth*.json'))[0]
-    json_file = os.path.join(predictions_folder, 'json')
-    coco = COCO(gt_file)
+    gt_file = glob.glob(os.path.join(predictions_dir_path, '*groundtruth*.json'))[0]
+    json_file_path = os.path.join(predictions_dir_path, 'json')
+    coco_object = COCO(gt_file)
 
-    boxstuff = BoxStuff()
+    plotter = precision_recall_plotter()
+    #
+    # plotter.add_coco_annotations(coco_object)
+    # plotter.add_dataloop_local_annotations(json_file_path)
+    # plotter.add_path_detections(predictions_dir_path)
 
-    # boxstuff.add_coco(coco)
-    boxstuff.add_jsons_path(json_file)
-    boxstuff.add_path_detections(predictions_folder)
-    boxstuff.plot_metrics()
-
+    plotter.add_dataloop_remote_annotations(project_name='IPM SQUARE EYE', dataset_name='Rodents',
+                                            filter_value='/Pics_from_Mice_EYE/TestSet/**')
+    plotter.plot_metrics()
