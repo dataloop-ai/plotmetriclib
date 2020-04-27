@@ -52,7 +52,7 @@ class precision_recall_plotter:
     def add_path_detections(self, predictions_folder):
 
         for path, subdirs, files in os.walk(predictions_folder):
-            if 'checkpoint' in path.split('/')[-1]:
+            if 'check' in path.split('/')[-1]:
                 model_name = path.split('/')[-1]
             else:
                 model_name = 'only_checkpoint'
@@ -151,16 +151,17 @@ class precision_recall_plotter:
                     class_conf = None
                 except:
                     raise
-
-                bb = BoundingBox(imageName=w_item.filename,
-                                 classId=annotation.label.lower(),
+                if model_name not in self.models_alowed_ls:
+                    continue
+                image_name = w_item.filename.split('/')[-1].split('.')[0]
+                bb = BoundingBox(imageName=image_name,
+                                 classId=annotation.label,
                                  x=annotation.coordinates[0]['x'],
                                  y=annotation.coordinates[0]['y'],
                                  w=annotation.coordinates[1]['x'],
                                  h=annotation.coordinates[1]['y'],
                                  typeCoordinates=CoordinatesType.Absolute,
                                  classConfidence=class_conf,
-                                 imgSize=(w_item.width, w_item.height),
                                  bbType=bb_type,
                                  format=BBFormat.XYX2Y2,
                                  model_name=model_name)
@@ -174,8 +175,7 @@ class precision_recall_plotter:
         except:
             print(traceback.format_exc())
 
-
-    def add_dataloop_remote_annotations(self, project_name, dataset_name, filter_value):
+    def add_dataloop_remote_annotations(self, project_name, dataset_name, filter_value, model_name):
         dlp.setenv('prod')
         project = dlp.projects.get(project_name)
         dataset = project.datasets.get(dataset_name)
@@ -183,7 +183,7 @@ class precision_recall_plotter:
         filters = dlp.Filters()
         filters.add(field='filename', values=filter_value)
         pages = dataset.items.list(filters=filters)
-
+        self.models_alowed_ls = [model_name, 'gt']
         i_item = 0
         pool = ThreadPool(processes=32)
         for page in pages:
@@ -194,7 +194,6 @@ class precision_recall_plotter:
                 i_item += 1
         pool.close()
         pool.join()
-
 
     def plot_metrics(self):
         precision_recall_fig, precision_recall = plt.subplots()
@@ -289,16 +288,17 @@ class precision_recall_plotter:
 if __name__ == '__main__':
     predictions_dir_path = '/Users/noam/data/rodent_data/predictions'
 
-    gt_file = glob.glob(os.path.join(predictions_dir_path, '*groundtruth*.json'))[0]
+    gt_file = glob.glob(os.path.join(predictions_dir_path, '*.json'))[0]
     json_file_path = os.path.join(predictions_dir_path, 'json')
     coco_object = COCO(gt_file)
 
     plotter = precision_recall_plotter()
-    #
+
     # plotter.add_coco_annotations(coco_object)
     # plotter.add_dataloop_local_annotations(json_file_path)
-    # plotter.add_path_detections(predictions_dir_path)
+    plotter.add_path_detections(predictions_dir_path)
 
     plotter.add_dataloop_remote_annotations(project_name='IPM SQUARE EYE', dataset_name='Rodents',
-                                            filter_value='/Pics_from_Mice_EYE/TestSet/**')
+                                             filter_value='/Pics_from_Mice_EYE/TestSet/**',
+                                             model_name='retinanet_resnet101_custom_anchors_02_2020')
     plotter.plot_metrics()
