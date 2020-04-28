@@ -365,7 +365,7 @@ class precision_recall_compute:
 
         plt.savefig('precision_recall.py')
 
-    def get_metric(self, model_name):
+    def get_metric(self, model_name, precision_to_recall_ratio=1.):
         evaluator = Evaluator()
         model_names = list()
         class_id = 0
@@ -379,7 +379,7 @@ class precision_recall_compute:
                                             IOUThreshold=0.5,
                                             method=MethodAveragePrecision.EveryPointInterpolation,
                                             confidence_threshold=0.,
-                                            precision_to_recall_ratio=1.)
+                                            precision_to_recall_ratio=precision_to_recall_ratio)
         sum_AP = 0.
         total_num_annotations = 0
         for r in res:
