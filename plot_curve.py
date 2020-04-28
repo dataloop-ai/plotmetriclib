@@ -15,7 +15,7 @@ from pycocotools.coco import COCO
 import torch
 
 
-class precision_recall_plotter:
+class precision_recall_compute:
 
     def __init__(self):
         self.by_model_name = {}
@@ -49,13 +49,14 @@ class precision_recall_plotter:
 
             self.by_model_name[model_name].addBoundingBox(bb)
 
-    def add_path_detections(self, predictions_folder):
+    def add_path_detections(self, predictions_folder, model_name=None):
 
         for path, subdirs, files in os.walk(predictions_folder):
-            if 'check' in path.split('/')[-1]:
-                model_name = path.split('/')[-1]
-            else:
-                model_name = 'only_checkpoint'
+            if model_name is None:
+                if 'check' in path.split('/')[-1]:
+                    model_name = path.split('/')[-1]
+                else:
+                    model_name = 'only_checkpoint'
             for name in files:
                 filename, ext = os.path.splitext(name)
                 if '.txt' not in ext.lower():
@@ -216,14 +217,15 @@ class precision_recall_plotter:
             to_show._boundingBoxes += self.by_model_name['gt']._boundingBoxes
             res = evaluator.GetPascalVOCMetrics(boundingboxes=to_show,
                                                 IOUThreshold=0.5,
-                                                method=MethodAveragePrecision.EveryPointInterpolation)
+                                                method=MethodAveragePrecision.EveryPointInterpolation,
+                                                confidence_threshold=0.)
             results = res[class_id]
             # plot precision recall
-            lines.append(precision_recall.plot(results['recall'], results['precision'], label=model_name)[0])
+            lines.append(precision_recall.plot(results['cum_recalls'], results['cum_precisions'], label=model_name)[0])
             # plot scores
-            scores_recall.plot(results['recall'], results['scores'], label=model_name)
+            scores_recall.plot(results['cum_recalls'], results['scores'], label=model_name)
             # plot scores
-            precision_scores.plot(results['scores'], results['precision'], label=model_name)
+            precision_scores.plot(results['scores'], results['cum_precisions'], label=model_name)
             legend.append(model_name)
         # final
         p_min = -0.05
@@ -282,7 +284,116 @@ class precision_recall_plotter:
             precision_recall_fig.canvas.draw()
 
         precision_recall_fig.canvas.mpl_connect('pick_event', onpick)
+
         plt.show()
+
+    def save_plot_metrics(self):
+        precision_recall_fig, precision_recall = plt.subplots()
+        fig = plt.figure()
+        evaluator = Evaluator()
+        model_names = list()
+        legend = list()
+        class_id = 0
+        lines = list()
+        for model_name, bbs in self.by_model_name.items():
+            model_names.append(model_name)
+            if model_name in ['gt']:
+                continue
+
+            to_show = BoundingBoxes()
+            to_show._boundingBoxes += bbs._boundingBoxes
+            to_show._boundingBoxes += self.by_model_name['gt']._boundingBoxes
+            res = evaluator.GetPascalVOCMetrics(boundingboxes=to_show,
+                                                IOUThreshold=0.5,
+                                                method=MethodAveragePrecision.EveryPointInterpolation,
+                                                confidence_threshold=0.)
+            results = res[class_id]
+            # plot precision recall
+            lines.append(precision_recall.plot(results['cum_recalls'], results['cum_precisions'], label=model_name)[0])
+
+            legend.append(model_name)
+        # final
+        p_min = -0.05
+        p_max = 1.05
+        for fig in [precision_recall]:
+            fig.set_xlim(p_min, p_max)
+            fig.set_ylim(p_min, p_max)
+            major_ticks = np.linspace(0, 1, 11)
+            minor_ticks = np.linspace(0, 1, 21)
+            fig.set_xticks(major_ticks)
+            fig.set_xticks(minor_ticks, minor=True)
+            fig.set_yticks(major_ticks)
+            fig.set_yticks(minor_ticks, minor=True)
+            # And a corresponding grid
+            fig.grid(which='both')
+            # Or if you want different settings for the grids:
+            fig.grid(which='minor', alpha=0.4)
+            fig.grid(which='major', alpha=0.8)
+            fig.legend(legend)
+
+        precision_recall.set_ylabel('precision')
+        precision_recall.set_xlabel('recall')
+        precision_recall.set_title('Precision Recall')
+
+        ##############
+        leg = precision_recall.legend(loc='lower left', fancybox=True, shadow=True)
+        leg.get_frame().set_alpha(0.4)
+
+        # we will set up a dict mapping legend line to orig line, and enable
+        # picking on the legend line
+        lined = dict()
+        for legline, origline in zip(leg.get_lines(), lines):
+            legline.set_picker(5)  # 5 pts tolerance
+            lined[legline] = origline
+
+        def onpick(event):
+            # on the pick event, find the orig line corresponding to the
+            # legend proxy line, and toggle the visibility
+            legline = event.artist
+            origline = lined[legline]
+            vis = not origline.get_visible()
+            origline.set_visible(vis)
+            # Change the alpha on the line in the legend so we can see what lines
+            # have been toggled
+            if vis:
+                legline.set_alpha(1.0)
+            else:
+                legline.set_alpha(0.2)
+            precision_recall_fig.canvas.draw()
+
+        precision_recall_fig.canvas.mpl_connect('pick_event', onpick)
+
+        plt.savefig('precision_recall.py')
+
+    def get_metric(self, model_name):
+        evaluator = Evaluator()
+        model_names = list()
+        class_id = 0
+
+        bbs = self.by_model_name[model_name]
+
+        to_show = BoundingBoxes()
+        to_show._boundingBoxes += bbs._boundingBoxes
+        to_show._boundingBoxes += self.by_model_name['gt']._boundingBoxes
+        res = evaluator.GetPascalVOCMetrics(boundingboxes=to_show,
+                                            IOUThreshold=0.5,
+                                            method=MethodAveragePrecision.EveryPointInterpolation,
+                                            confidence_threshold=0.,
+                                            precision_to_recall_ratio=1.)
+        sum_AP = 0.
+        total_num_annotations = 0
+        for r in res:
+            sum_AP += r['AP'] * r['num_annotations']
+            total_num_annotations += r['num_annotations']
+
+        if total_num_annotations > 0:
+            mAP = sum_AP / total_num_annotations
+        else:
+            mAP = 0
+        # plot precision recall
+        return mAP
+
+
 
 
 if __name__ == '__main__':
@@ -292,13 +403,13 @@ if __name__ == '__main__':
     json_file_path = os.path.join(predictions_dir_path, 'json')
     coco_object = COCO(gt_file)
 
-    plotter = precision_recall_plotter()
+    plotter = precision_recall_compute()
 
-    # plotter.add_coco_annotations(coco_object)
-    # plotter.add_dataloop_local_annotations(json_file_path)
+    # compute.add_coco_annotations(coco_object)
+    # compute.add_dataloop_local_annotations(json_file_path)
     plotter.add_path_detections(predictions_dir_path)
 
     plotter.add_dataloop_remote_annotations(project_name='IPM SQUARE EYE', dataset_name='Rodents',
                                              filter_value='/Pics_from_Mice_EYE/TestSet/**',
                                              model_name='retinanet_resnet101_custom_anchors_02_2020')
-    plotter.plot_metrics()
+    plotter.save_plot_metrics()

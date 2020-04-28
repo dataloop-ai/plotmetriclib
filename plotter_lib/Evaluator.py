@@ -23,7 +23,9 @@ class Evaluator:
     def GetPascalVOCMetrics(self,
                             boundingboxes,
                             IOUThreshold=0.5,
-                            method=MethodAveragePrecision.EveryPointInterpolation):
+                            method=MethodAveragePrecision.EveryPointInterpolation,
+                            confidence_threshold=0.5,
+                            precision_to_recall_ratio=1):
         """Get the metrics used by the VOC Pascal 2012 challenge.
         Get
         Args:
@@ -75,6 +77,8 @@ class Evaluator:
             # get class
             if bb.getClassId() not in classes:
                 classes.append(bb.getClassId())
+
+        detections = [dect for dect in detections if dect[2] > confidence_threshold]
         classes = sorted(classes)
         # Precision x Recall is obtained individually by each class
         # Loop through by classes
@@ -82,6 +86,7 @@ class Evaluator:
             # Get only detection of class c
             dects = []
             [dects.append(d) for d in detections if d[1] == c]
+
             # Get only ground truths of class c
             gts = []
             [gts.append(g) for g in groundTruths if g[1] == c]
@@ -119,27 +124,31 @@ class Evaluator:
                     FP[d] = 1  # count as false positive
                     # print("FP")
             # compute precision, recall and average precision
-            acc_FP = np.cumsum(FP)
-            acc_TP = np.cumsum(TP)
-            rec = acc_TP / npos
-            prec = np.divide(acc_TP, (acc_FP + acc_TP))
+            cum_FP = np.cumsum(FP)
+            cum_TP = np.cumsum(TP)
+            cum_recalls = cum_TP / npos
+            cum_precisions = np.divide(cum_TP, (cum_FP + cum_TP))
             # Depending on the method, call the right implementation
             if method == MethodAveragePrecision.EveryPointInterpolation:
-                [ap, mpre, mrec, ii] = Evaluator.CalculateAveragePrecision(rec, prec)
+                [ap, mpre, mrec, ii] = Evaluator.CalculateAveragePrecision(cum_recalls, cum_precisions, precision_to_recall_ratio)
             else:
-                [ap, mpre, mrec, _] = Evaluator.ElevenPointInterpolatedAP(rec, prec)
+                [ap, mpre, mrec, _] = Evaluator.ElevenPointInterpolatedAP(cum_recalls, cum_precisions)
+            total_FP = np.sum(FP)
+            total_TP = np.sum(TP)
+            total_recall = total_TP / npos
+            total_precision = total_TP / (total_TP + total_FP)
             # add class result in the dictionary to be returned
             r = {
                 'class': c,
-                'precision': prec,
-                'recall': rec,
+                'cum_precisions': cum_precisions,
+                'cum_recalls': cum_recalls,
                 'scores': scores,
                 'AP': ap,
                 'interpolated precision': mpre,
                 'interpolated recall': mrec,
-                'total positives': npos,
-                'total TP': np.sum(TP),
-                'total FP': np.sum(FP)
+                'num_annotations': npos,
+                'total TP': total_TP,
+                'total FP': total_FP
             }
             ret.append(r)
         return ret
@@ -300,7 +309,7 @@ class Evaluator:
         return ret
 
     @staticmethod
-    def CalculateAveragePrecision(rec, prec):
+    def CalculateAveragePrecision(rec, prec, p_2_r=1.):
         mrec = []
         mrec.append(0)
         [mrec.append(e) for e in rec]
@@ -316,8 +325,12 @@ class Evaluator:
             if mrec[1:][i] != mrec[0:-1][i]:
                 ii.append(i + 1)
         ap = 0
+        u_p = p_2_r / (p_2_r + 1)
+        u_r = (1 - u_p)
         for i in ii:
-            ap = ap + np.sum((mrec[i] - mrec[i - 1]) * mpre[i])
+            recall_dim = (mrec[i] - mrec[i - 1]) * u_r
+            precision_dim = mpre[i] * u_p
+            ap = ap + np.sum(recall_dim * precision_dim)
         # return [ap, mpre[1:len(mpre)-1], mrec[1:len(mpre)-1], ii]
         return [ap, mpre[0:len(mpre) - 1], mrec[0:len(mpre) - 1], ii]
 
