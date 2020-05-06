@@ -1,4 +1,4 @@
-from plotter_lib.utils import *
+from .utils import *
 
 
 class BoundingBox:

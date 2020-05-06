@@ -14,9 +14,9 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import numpy as np
 
-from plotter_lib.BoundingBox import *
-from plotter_lib.BoundingBoxes import *
-from plotter_lib.utils import *
+from .BoundingBox import *
+from .BoundingBoxes import *
+from .utils import *
 
 
 class Evaluator:

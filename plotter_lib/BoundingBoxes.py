@@ -1,5 +1,5 @@
-from plotter_lib.BoundingBox import *
-from plotter_lib.utils import *
+from .BoundingBox import *
+from .utils import *
 
 
 class BoundingBoxes:

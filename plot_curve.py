@@ -6,13 +6,15 @@ import json
 import glob
 import os
 import threading
+import logging
 import dtlpy as dlp
-from plotter_lib.BoundingBox import BoundingBox
-from plotter_lib.BoundingBoxes import BoundingBoxes
-from plotter_lib.Evaluator import Evaluator
-from plotter_lib.utils import BBFormat, CoordinatesType, BBType, MethodAveragePrecision
+from .plotter_lib.BoundingBox import BoundingBox
+from .plotter_lib.BoundingBoxes import BoundingBoxes
+from .plotter_lib.Evaluator import Evaluator
+from .plotter_lib.utils import BBFormat, CoordinatesType, BBType, MethodAveragePrecision
 from pycocotools.coco import COCO
 import torch
+logger = logging.getLogger(__name__)
 
 
 class precision_recall_compute:
@@ -363,13 +365,13 @@ class precision_recall_compute:
 
         precision_recall_fig.canvas.mpl_connect('pick_event', onpick)
 
-        plt.savefig('precision_recall.py')
+        plt.savefig('precision_recall.png')
 
     def get_metric(self, model_name, precision_to_recall_ratio=1.):
         evaluator = Evaluator()
         model_names = list()
         class_id = 0
-
+        logger.info
         bbs = self.by_model_name[model_name]
 
         to_show = BoundingBoxes()
@@ -412,4 +414,6 @@ if __name__ == '__main__':
     plotter.add_dataloop_remote_annotations(project_name='IPM SQUARE EYE', dataset_name='Rodents',
                                              filter_value='/Pics_from_Mice_EYE/TestSet/**',
                                              model_name='retinanet_resnet101_custom_anchors_02_2020')
+
+    new_checkpoint_mAP = plotter.get_metric(model_name='new_checkpoint', precision_to_recall_ratio=1.)
     plotter.save_plot_metrics()
