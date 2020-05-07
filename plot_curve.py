@@ -291,7 +291,7 @@ class precision_recall_compute:
 
     def save_plot_metrics(self):
         precision_recall_fig, precision_recall = plt.subplots()
-        fig = plt.figure()
+
         evaluator = Evaluator()
         model_names = list()
         legend = list()
